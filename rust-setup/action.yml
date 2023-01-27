@@ -1,0 +1,74 @@
+name: "Rust build setup"
+description: |
+  Runs an opionated rust setup after optionally checking out a repository
+inputs:
+  CHECKOUT_GIT_REF:
+    description: "Optional git ref to checkout"
+    required: false
+  CHECKOUT_REPOSITORY:
+    description: "Optional repository to checkout. If this repository has a rust-toolchain file, it will be used to override the default toolchain"
+    required: false
+  CHECKOUT_FETCH_DEPTH:
+    description: "Optional depth to checkout repository to"
+    required: false
+  REPOSITORY_SPECIFIC_SETUP:
+    description: "Optional repository specific dependencies to install"
+    required: false
+  GIT_CREDENTIALS:
+    description: "Optional credentials to pass to git. Useful if you need to pull private repos for dependencies"
+    required: false
+
+runs:
+  using: composite
+  steps:
+    # Optionally check out a specific repo to get repo specific dependencies
+    - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3
+      if: inputs.CHECKOUT_REPOSITORY != ''
+      with:
+        repository: ${{ inputs.CHECKOUT_REPOSITORY }}
+        ref: ${{ inputs.CHECKOUT_GIT_REF }}
+        fetch-depth: ${{ inputs.CHECKOUT_FETCH_DEPTH }}}
+        persist-credentials: false
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install build-essential ca-certificates clang curl git libpq-dev libssl-dev pkg-config lsof lld --no-install-recommends --assume-yes
+      shell: bash
+
+    - name: Check for rust-toolchain existence
+      id: rust-toolchain-exists
+      uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # pin@v2
+      with:
+        files: "rust-toolchain"
+
+    - name: Install rust toolchain
+      id: toolchain
+      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # pin@v1
+      with:
+        # if the rust-toolchain file exists, use it via override, otherwise use the default toolchain
+        override: steps.rust-toolchain-exists.outputs.files_exists
+        components: rustfmt, clippy
+
+    - name: Print results of rustup show
+      shell: bash
+      run: rustup show
+
+    # rust-cache action will cache ~/.cargo and ./target
+    # https://github.com/Swatinem/rust-cache#cache-details
+    - name: Run cargo cache
+      uses: Swatinem/rust-cache@359a70e43a0bb8a13953b04a90f76428b4959bb6 # pin@v2.2.0
+
+    - name: Run repository specific setup
+      if: inputs.REPOSITORY_SPECIFIC_SETUP != ''
+      shell: bash
+      run: exec bash -c "${{ inputs.REPOSITORY_SPECIFIC_SETUP }}"
+
+    - name: Add cargo bin to path
+      run: echo "/home/runner/.cargo/bin" | tee -a $GITHUB_PATH
+      shell: bash
+
+    - name: Setup git credentials
+      if: inputs.GIT_CREDENTIALS != ''
+      shell: bash
+      run: |
+        git config --global credential.helper store
+        echo "${{ inputs.GIT_CREDENTIALS }}" > ~/.git-credentials
