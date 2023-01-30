@@ -1,28 +1,34 @@
-name: 'Docker build setup'
-description: 'Docker build setup'
+name: "Docker build setup"
+description: |
+  Runs an opinionated and unified docker build setup action. It does the following:
+  * Logs in to docker image registries (AWS ECR and GCP GAR)
+  * Setup for buildx and other dependencies (crane)
+  * Sets git credentials for private builds
 inputs:
   # GCP auth
   GCP_WORKLOAD_IDENTITY_PROVIDER:
     required: true
+    description: "GCP Workload Identity provider"
   GCP_SERVICE_ACCOUNT_EMAIL:
     required: true
+    description: "GCP service account email"
   GCP_DOCKER_ARTIFACT_REPO:
     required: true
     description: "GCP GAR repo to authenticate to"
   # AWS auth
   AWS_ACCESS_KEY_ID:
     required: true
+    description: "AWS access key id"
   AWS_SECRET_ACCESS_KEY:
     required: true
+    description: "AWS secret access key"
   AWS_DOCKER_ARTIFACT_REPO:
     required: true
     description: "AWS ECR repo to authenticate to"
-  # Optional git credentials to use during the build process
-  # Useful if you need to pull private repos for depdenencies
   GIT_CREDENTIALS:
-    description: "Optional credentials to pass to git"
+    description: "Optional credentials to pass to git. Useful if you need to pull private repos for dependencies"
     required: false
-  
+
 runs:
   using: "composite"
   steps:

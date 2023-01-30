@@ -1,0 +1,32 @@
+name: "Update Github Action docs"
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  update-action-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3
+        with:
+          ref: ${{ github.head_ref || github.ref_name }} # the branch name
+
+      - name: Install action-docs
+        run: npm install -g action-docs@1.1.1
+
+      - name: Generate docs
+        shell: bash
+        run: ./update-action-docs.sh
+
+      - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git add .
+          git commit -m "Update Github Action docs"
+          git push
