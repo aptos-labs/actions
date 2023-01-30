@@ -17,6 +17,7 @@ Runs an opinionated and unified docker build setup action. It does the following
 | AWS_SECRET_ACCESS_KEY | AWS secret access key | `true` |  |
 | AWS_DOCKER_ARTIFACT_REPO | AWS ECR repo to authenticate to | `true` |  |
 | GIT_CREDENTIALS | Optional credentials to pass to git. Useful if you need to pull private repos for dependencies | `false` |  |
+| BUILDX_VERSION | Version of buildx to use | `false` | v0.10.1 |
 
 
 ## Runs
