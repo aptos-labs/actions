@@ -1,0 +1,9 @@
+# artifacts from replay-verify
+metadata-cache
+target
+terraform
+replay-verify/run_*
+!replay-verify/run_*.py
+
+__pycache__
+.vscode

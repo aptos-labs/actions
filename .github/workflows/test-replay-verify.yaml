@@ -1,0 +1,44 @@
+name: "Test replay-verify"
+
+on:
+  push:
+
+jobs:
+  run-replay-verify:
+    runs-on: high-perf-docker-with-local-ssd
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3
+        with:
+          path: actions
+
+      - uses: ./actions/rust-setup
+        with:
+          GIT_CREDENTIALS: ${{ secrets.GIT_CREDENTIALS }}
+          CHECKOUT_REPOSITORY: aptos-labs/aptos-core
+          CHECKOUT_PATH: aptos-core
+
+      # Because we have to checkout the actions in the first step, and then check out a rust repo (aptos-core), the actions directory will get overwritten
+      # We need to check it out again for the Post Run actions/checkout to succeed
+      # This is a special case for tests written in this repo
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3
+        with:
+          path: actions
+
+      - uses: ./actions/replay-verify
+        with:
+          TIMEOUT_MINUTES: 20
+          BUCKET: aptos-testnet-backup-2223d95b
+          SUB_DIR: e1
+          HISTORY_START: 350000000 # TODO: We need an exhaustive list of txns_to_skip before we can set this to 0.
+          TXNS_TO_SKIP: 46874937 151020059
+          # path in aptos-core to back up template in helm chart
+          # NOTE: this can be moved to a more generalized location, once deployments are moved out of aptos-core to a separate repo
+          #       a copy of this file can also be moved to this actions repo
+          BACKUP_CONFIG_TEMPLATE_PATH: terraform/helm/fullnode/files/backup/s3-public.yaml
+
+      # Because we have to checkout the actions in the first step, and then check out a rust repo (aptos-core), the actions directory will get overwritten
+      # We need to check it out again for the Post Run actions/checkout to succeed
+      # This is a special case for tests written in this repo
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3
+        with:
+          path: actions
