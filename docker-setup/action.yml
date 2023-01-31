@@ -75,3 +75,10 @@ runs:
       run: |
         git config --global credential.helper store
         echo "${{ inputs.GIT_CREDENTIALS }}" > ~/.git-credentials
+
+    - name: debug
+      shell: bash
+      run: |
+        set -x
+        ls -l
+        ls -l /
