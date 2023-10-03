@@ -8,11 +8,11 @@ permissions:
   id-token: write #required for GCP Workload Identity federation which we use to login into Google Artifact Registry
 
 jobs:
-  run-docker-buildx-setup:
+  run-docker-setup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: ./docker-buildx-setup
+      - uses: ./docker-setup
   run-gar-auth:
     runs-on: ubuntu-latest
     steps:

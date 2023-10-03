@@ -1,6 +1,6 @@
 ## Description
 
-Sets up docker buildx for use in other actions.
+Sets up docker with buildx for use in other actions.
 
 ## Inputs
 
