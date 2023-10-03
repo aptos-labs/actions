@@ -1,6 +1,7 @@
 name: "Rust build setup"
 description: |
   Runs an opionated rust setup after optionally checking out a repository
+
 inputs:
   CHECKOUT_GIT_REF:
     description: "Optional git ref to checkout"

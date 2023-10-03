@@ -1,0 +1,20 @@
+name: Setup docker buildx
+description: Sets up docker buildx for use in other actions.
+
+inputs:
+  buildx_version:
+    description: "The buildx version to use."
+    default: v0.11.2
+
+runs:
+  using: composite
+  steps:
+    - name: setup docker context for buildx
+      id: buildx-context
+      shell: bash
+      run: docker context create builders
+    - name: setup docker buildx
+      uses: docker/setup-buildx-action@v3.0.0
+      with:
+        endpoint: builders
+        version: ${{ inputs.buildx_version }}
