@@ -1,0 +1,97 @@
+name: Run Local Testnet
+description: Use the Aptos CLI to run a local testnet. Once this action is succeeds, a local testnet will be running and ready to use.
+
+inputs:
+  PNPM_VERSION:
+    description: "The version of pnpm to install."
+    default: 8.15.6
+  NODE_VERSION:
+    description: "The version of node to install. This must be specified if a .node-version file is not present."
+    required: false
+  CLI_GIT_REF:
+    description: "The git ref (e.g. a tag, like 'testnet' or a commit SHA) of the Aptos CLI to use. If not given, we will use the latest released CLI. If given, the local testnet is run from a Docker image."
+    required: false
+  DOCKER_ARTIFACT_REPO:
+    description: "The GCP Docker artifact repository + user. Only used if CLI_GIT_REF is set."
+    default: "docker.io/aptoslabs"
+    required: false
+  WITH_INDEXER_API:
+    description: "If true, run an indexer API in addition to the node API and faucet."
+    default: "true"
+  ADDITIONAL_ARGS:
+    description: "Additional arguments to pass to the CLI when running the local testnet."
+    required: false
+
+runs:
+  using: composite
+  steps:
+    # Install node.
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.NODE_VERSION }}
+        node-version-file: .node-version
+        registry-url: "https://registry.npmjs.org"
+
+    # Install pnpm.
+    - uses: pnpm/action-setup@v2
+      with:
+        version: ${{ inputs.PNPM_VERSION }}
+
+    # Install wait-on.
+    - run: pnpm install -g wait-on
+      shell: bash
+
+    # Install the Aptos CLI.
+    - run: pnpm install -g @aptos-labs/aptos-cli
+      shell: bash
+      if: ${{ !inputs.CLI_GIT_REF }}
+
+    # If using the latest released CLI, print the version.
+    - run: aptos --version
+      shell: bash
+      if: ${{ !inputs.CLI_GIT_REF }}
+
+    # Run the local testnet using the latest released CLI if no git ref is given.
+    - run: |
+        aptos node run-local-testnet \
+        --assume-yes \
+        --force-restart \
+        ${{ inputs.WITH_INDEXER_API == 'true' && '--with-indexer-api' || ' ' }} \
+        ${{ inputs.ADDITIONAL_ARGS || ' ' }} \
+        --log-to-stdout >& ${{ runner.temp }}/local-testnet-logs.txt &
+      shell: bash
+      if: ${{ !inputs.CLI_GIT_REF }}
+
+    # Run the local testnet using an image if a git ref is given.
+    - run: |
+        docker run \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        --network host \
+        -v ${{ runner.temp }}/testnet:/testnet \
+        --name=local-testnet-${{ inputs.CLI_GIT_REF }} \
+        --detach \
+        ${{ inputs.DOCKER_ARTIFACT_REPO }}/tools:${{ inputs.CLI_GIT_REF }} \
+        aptos node run-local-testnet \
+        --test-dir /testnet \
+        ${{ inputs.WITH_INDEXER_API == 'true' && '--with-indexer-api' || ' ' }} \
+        ${{ inputs.ADDITIONAL_ARGS || ' ' }}
+      shell: bash
+      if: ${{ inputs.CLI_GIT_REF }}
+
+    # Wait for the local testnet to start up.
+    - run: wait-on --verbose --interval 1500 --timeout 120000 --httpTimeout 120000 http-get://127.0.0.1:8070
+      shell: bash
+
+    # Print the logs from the local testnet if the tests failed.
+    - name: Print local testnet logs if something failed
+      run: docker logs local-testnet-${{ inputs.IMAGE_TAG }}
+      shell: bash
+      if: ${{ inputs.CLI_GIT_REF && failure() }}
+
+    # Print the logs from the local testnet if the tests failed.
+    - name: Print local testnet logs if something failed
+      run: cat ${{ runner.temp }}/local-testnet-logs.txt
+      shell: bash
+      if: ${{ !inputs.CLI_GIT_REF && failure() }}
+
+

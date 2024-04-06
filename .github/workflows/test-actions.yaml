@@ -5,18 +5,20 @@ on:
 
 permissions:
   contents: read
-  id-token: write #required for GCP Workload Identity federation which we use to login into Google Artifact Registry
+  # Required for GCP Workload Identity federation which we use to login into Google Artifact Registry
+  id-token: write
 
 jobs:
   run-docker-setup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./docker-setup
+
   run-gar-auth:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./gar-auth
         with:
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -28,3 +30,48 @@ jobs:
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
           create_credentials_file: false
+
+  # Run a local testnet with the default arguments, which means it uses the latest
+  # released CLI. Confirm that the local testnet is actually up.
+  run-local-testnet-released:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./run-local-testnet
+        with:
+          NODE_VERSION: 20
+      - run: curl --fail http://127.0.0.1:8080/v1
+      - run: curl --fail http://127.0.0.1:8081
+      - run: |
+          curl --fail http://127.0.0.1:8090/v1/graphql --data-raw '{"query":"{processor_status {last_success_version processor}}"}'
+
+  # Run a local testnet using a git ref.
+  run-local-testnet-git-ref:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./run-local-testnet
+        with:
+          NODE_VERSION: 20
+          CLI_GIT_REF: "nightly_36181e92c65020660a98d2041aadaafdc682cf8a"
+      - run: curl --fail http://127.0.0.1:8080/v1
+      - run: curl --fail http://127.0.0.1:8081
+      - run: |
+          curl --fail http://127.0.0.1:8090/v1/graphql --data-raw '{"query":"{processor_status {last_success_version processor}}"}'
+
+  # Run a local testnet without the indexer API. We confirm that curl exits with exit
+  # code 7, CURLE_COULDNT_CONNECT, which is what we expect since the indexer API should
+  # not be there.
+  run-local-testnet-no-indexer-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./run-local-testnet
+        with:
+          NODE_VERSION: 20
+          WITH_INDEXER_API: "false"
+      - run: curl --fail http://127.0.0.1:8080/v1
+      - run: curl --fail http://127.0.0.1:8081
+      - run: |
+          curl --fail http://127.0.0.1:8090/v1/graphql --data-raw '{"query":"{processor_status {last_success_version processor}}"}' || if [ $? -eq 7 ]; then exit 0; else exit 1; fi
