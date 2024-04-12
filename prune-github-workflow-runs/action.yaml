@@ -1,0 +1,22 @@
+name: "Prune Github Workflow Runs"
+description: "Delete obsolete runs of workflows that do not exist anymore in the given repo."
+
+inputs:
+  token:
+    description: GitHub access token
+    required: true
+  owner:
+    description: Repository owner
+    required: false
+    default: ${{ github.repository_owner }}
+  repo:
+    description: Repository name
+    required: false
+    default: ${{ github.event.repository.name }}
+  dry-run:
+    description: "Do not delete runs, just print them"
+    required: false
+    default: "false"
+runs:
+  using: node20
+  main: "dist/index.js"
