@@ -31724,7 +31724,8 @@ Deleting their workflow runs now...`);
                 workflow_id: wf.id,
             }, (response) => response.data);
             for (const [index, run] of workflowRuns.entries()) {
-                core.info(`Workflow: "${wf.name}" - Deleting Run (${index + 1}/${workflowRuns.length}) - Run ID: ${run.id}`);
+                const workflowInfo = `${dryRun ? "[DRY-RUN] " : ""}Workflow: "${wf.name}" - Deleting Run (${index + 1}/${workflowRuns.length}) - Run ID: ${run.id}`;
+                core.info(workflowInfo);
                 try {
                     if (!dryRun) {
                         await ghClient.rest.actions.deleteWorkflowRun({
