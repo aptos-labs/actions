@@ -25,6 +25,21 @@ inputs:
 runs:
   using: composite
   steps:
+    # There is no way to configure post-if with this, so we just always print the logs
+    # in the post step.
+    - name: Set up printing logs in a post step
+      uses: aptos-labs/actions/with-post-step@main
+      with:
+        main: echo 'Configured post step to print logs at the end...'
+        post: |
+          echo "Printing logs from the localnet..."
+          if [ -n "${{ inputs.CLI_GIT_REF }}" ]; then
+            docker logs "local-testnet-${{ inputs.CLI_GIT_REF }}"
+          else
+            cat "${{ runner.temp }}/local-testnet-logs.txt"
+          fi
+          echo "Printed all logs from the localnet."
+
     # Install node.
     - uses: actions/setup-node@v4
       with:
@@ -81,17 +96,3 @@ runs:
     # Wait for the local testnet to start up.
     - run: wait-on --verbose --interval 1500 --timeout 120000 --httpTimeout 120000 http-get://127.0.0.1:8070
       shell: bash
-
-    # Print the logs from the local testnet if the tests failed.
-    - name: Print local testnet logs if something failed
-      run: docker logs local-testnet-${{ inputs.IMAGE_TAG }}
-      shell: bash
-      if: ${{ inputs.CLI_GIT_REF && failure() }}
-
-    # Print the logs from the local testnet if the tests failed.
-    - name: Print local testnet logs if something failed
-      run: cat ${{ runner.temp }}/local-testnet-logs.txt
-      shell: bash
-      if: ${{ !inputs.CLI_GIT_REF && failure() }}
-
-
