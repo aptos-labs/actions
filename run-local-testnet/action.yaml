@@ -48,7 +48,7 @@ runs:
         registry-url: "https://registry.npmjs.org"
 
     # Install pnpm.
-    - uses: pnpm/action-setup@v2
+    - uses: pnpm/action-setup@v4
       with:
         version: ${{ inputs.PNPM_VERSION }}
 
