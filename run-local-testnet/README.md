@@ -1,6 +1,6 @@
 ## Description
 
-Use the Aptos CLI to run a local testnet. Once this action is succeeds, a local testnet will be running and ready to use.
+Use the Aptos CLI to run a local testnet. Once this action is succeeds, a local testnet will be running and ready to use. **Note**, if `WITH_INDEXER_API` is `true`, this action requires that the runner has Docker running and available. On some runners (e.g. macos-latest) Docker is not installed by default.
 
 ## Inputs
 
