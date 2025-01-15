@@ -75,3 +75,15 @@ jobs:
       - run: curl --fail http://127.0.0.1:8081
       - run: |
           curl --fail http://127.0.0.1:8090/v1/graphql --data-raw '{"query":"{processor_status {last_success_version processor}}"}' || if [ $? -eq 7 ]; then exit 0; else exit 1; fi
+
+  # This also transitively tests the install-aptos-cli action.
+  run-test-move:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./test-move
+        with:
+          WORKING_DIRECTORY: .github/workflows/move
+          ADDITIONAL_LINT_ARGS: "--named-addresses addr=0x5"
+          ADDITIONAL_COMPILE_ARGS: "--named-addresses addr=0x5"
+          ADDITIONAL_TEST_ARGS: "--named-addresses addr=0x5"
