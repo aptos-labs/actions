@@ -1,0 +1,31 @@
+name: Install Aptos CLI
+description: Install the Aptos CLI. By default we use the latest released version of the Aptos CLI but you can specify the version. For now this only works on Linux runners.
+
+inputs:
+  INSTALL_DIRECTORY:
+    description: "The directory to install the Aptos CLI. If not specified, it will be installed in /usr/local/bin"
+    required: false
+    default: "/usr/local/bin"
+  CLI_VERSION:
+    description: "The version of the Aptos CLI to install. If not specified, the latest version will be installed."
+    required: false
+  SHELL:
+    description: "The shell to use for the steps."
+    required: false
+    default: "bash"
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch installation script
+      shell: ${{ inputs.SHELL }}
+      run: curl -fSL "https://aptos.dev/scripts/install_cli.py" -o ${{ runner.temp }}/install_cli.py
+
+    - name: Install Aptos CLI
+      shell: ${{ inputs.SHELL }}
+      run: |
+        if [ -n "${{ inputs.CLI_VERSION }}" ]; then
+          python3 ${{ runner.temp }}/install_cli.py -f -y --bin-dir ${{ inputs.INSTALL_DIRECTORY }} --cli-version ${{ inputs.CLI_VERSION }}
+        else
+          python3 ${{ runner.temp }}/install_cli.py -f -y --bin-dir ${{ inputs.INSTALL_DIRECTORY }}
+        fi
