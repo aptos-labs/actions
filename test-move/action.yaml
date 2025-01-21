@@ -50,7 +50,7 @@ runs:
   using: composite
   steps:
     - name: Install Aptos CLI
-      uses: ./install-aptos-cli
+      uses: aptos-labs/actions/install-aptos-cli@main
       if: ${{ inputs.SKIP_INSTALLING_CLI == 'false' }}
       with:
         CLI_VERSION: ${{ inputs.CLI_VERSION }}
