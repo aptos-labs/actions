@@ -1,6 +1,6 @@
 ## Description
 
-Install the Aptos CLI. By default we use the latest released version of the Aptos CLI but you can specify the version. For now this only works on Linux runners.
+Install the Aptos CLI. By default we use the latest released version of the Aptos CLI but you can specify the version. This only works on Linux runners.
 
 ## Inputs
 

@@ -1,5 +1,5 @@
 name: Install Aptos CLI
-description: Install the Aptos CLI. By default we use the latest released version of the Aptos CLI but you can specify the version. For now this only works on Linux runners.
+description: Install the Aptos CLI. By default we use the latest released version of the Aptos CLI but you can specify the version. This only works on Linux runners.
 
 inputs:
   INSTALL_DIRECTORY:
