@@ -8,6 +8,12 @@ runs:
       shell: bash
       run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
 
+    - name: Export shim envs
+      shell: bash 
+      run: |
+        echo "GITHUB_PATH=$GITHUB_PATH" >> "$GITHUB_ENV"
+        echo "PATH=$PATH" >> "$GITHUB_ENV"
+
     - name: Install Node.js
       uses: actions/setup-node@v4
 
