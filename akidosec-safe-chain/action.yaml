@@ -9,10 +9,11 @@ runs:
       run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
 
     - name: Install Node.js
-        uses: actions/setup-node@v4
+      uses: actions/setup-node@v4
 
     - name: Validate safechain installation
-        run: |
+      shell: bash
+      run: |
           set +e
           npm install safe-chain-test
           status=$?
