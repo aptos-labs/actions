@@ -9,7 +9,6 @@ permissions:
   id-token: write
 
 jobs:
-
   run-akidosec-safe-chain:
     runs-on: ubuntu-latest
     steps:
