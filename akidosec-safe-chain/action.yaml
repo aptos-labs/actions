@@ -11,9 +11,8 @@ runs:
     - name: Export shim envs
       shell: bash 
       run: |
-        echo "GITHUB_PATH=$GITHUB_PATH" >> "$GITHUB_ENV"
-        echo "PATH=$PATH" >> "$GITHUB_ENV"
-
+        echo "GITHUB_PATH=$GITHUB_PATH" 
+        
     - name: Install Node.js
       uses: actions/setup-node@v4
 
