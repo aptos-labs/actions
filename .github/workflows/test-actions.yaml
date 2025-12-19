@@ -14,6 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./akidosec-safe-chain
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+      - name: Validate safechain installation
+        shell: bash
+        run: |
+            set +e
+            npm install safe-chain-test
+            status=$?
+            if [ $status -eq 0 ]; then
+              echo "❌ ERROR: installation succeeded but was expected to fail"
+              exit 1
+            else
+              echo "✅ Expected failure occurred"
+              exit 0
+            fi
 
   run-docker-setup:
     runs-on: ubuntu-latest
