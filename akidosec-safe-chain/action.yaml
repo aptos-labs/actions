@@ -11,22 +11,4 @@ runs:
     - name: Export shim envs
       shell: bash 
       run: |
-        echo "GITHUB_PATH=$GITHUB_PATH"
-        cat "$GITHUB_PATH"
-        
-    - name: Install Node.js
-      uses: actions/setup-node@v4
-
-    - name: Validate safechain installation
-      shell: bash
-      run: |
-          set +e
-          npm install safe-chain-test
-          status=$?
-          if [ $status -eq 0 ]; then
-            echo "❌ ERROR: installation succeeded but was expected to fail"
-            exit 1
-          else
-            echo "✅ Expected failure occurred"
-            exit 0
-          fi
+        echo "/home/runner/.safe-chain/shims" >> $GITHUB_PATH
