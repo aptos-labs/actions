@@ -9,6 +9,13 @@ permissions:
   id-token: write
 
 jobs:
+
+  run-akidosec-safe-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./akidosec-safe-chain
+
   run-docker-setup:
     runs-on: ubuntu-latest
     steps:

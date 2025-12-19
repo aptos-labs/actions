@@ -1,0 +1,25 @@
+name: Setup akidosec safe chain
+description: Sets up akidosec safe chain.
+
+runs:
+  using: composite
+  steps:
+    - name: Install safechain
+      shell: bash
+      run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
+
+    - name: Install Node.js
+        uses: actions/setup-node@v4
+
+    - name: Validate safechain installation
+        run: |
+          set +e
+          npm install safe-chain-test
+          status=$?
+          if [ $status -eq 0 ]; then
+            echo "❌ ERROR: installation succeeded but was expected to fail"
+            exit 1
+          else
+            echo "✅ Expected failure occurred"
+            exit 0
+          fi
