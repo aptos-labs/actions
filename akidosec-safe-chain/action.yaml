@@ -12,3 +12,8 @@ runs:
       shell: bash 
       run: |
         echo "/home/runner/.safe-chain/shims" >> $GITHUB_PATH
+    
+    - name: check path
+      shell: bash
+      run: |
+        echo $PATH

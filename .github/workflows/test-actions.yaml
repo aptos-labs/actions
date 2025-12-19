@@ -16,6 +16,10 @@ jobs:
       - uses: ./akidosec-safe-chain
       - name: Install Node.js
         uses: actions/setup-node@v4
+      - name: check path
+        shell: bash
+        run: |
+          echo $PATH
       - name: Validate safechain installation
         shell: bash
         run: |
