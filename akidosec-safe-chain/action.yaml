@@ -7,13 +7,3 @@ runs:
     - name: Install safechain
       shell: bash
       run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
-
-    - name: Export shim envs
-      shell: bash 
-      run: |
-        echo "/home/runner/.safe-chain/shims" >> $GITHUB_PATH
-    
-    - name: check path
-      shell: bash
-      run: |
-        echo $PATH

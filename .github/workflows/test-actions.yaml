@@ -16,10 +16,6 @@ jobs:
       - uses: aptos-labs/actions/akidosec-safe-chain@jkao97/akidosec-installation
       - name: Install Node.js
         uses: actions/setup-node@v4
-      - name: check path
-        shell: bash
-        run: |
-          echo $PATH
       - name: Validate safechain installation
         shell: bash
         run: |
