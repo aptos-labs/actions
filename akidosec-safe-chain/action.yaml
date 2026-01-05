@@ -1,0 +1,9 @@
+name: Setup akidosec safe chain
+description: Sets up akidosec safe chain.
+
+runs:
+  using: composite
+  steps:
+    - name: Install safechain
+      shell: bash
+      run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
