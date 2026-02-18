@@ -4,7 +4,7 @@ description: Sets up docker with buildx for use in other actions.
 inputs:
   buildx_version:
     description: "The buildx version to use."
-    default: v0.11.2
+    default: v0.31.1
 
 runs:
   using: composite
