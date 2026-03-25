@@ -6,7 +6,7 @@ Sets up docker with buildx for use in other actions.
 
 | parameter | description | required | default |
 | --- | --- | --- | --- |
-| buildx_version | The buildx version to use. | `false` | v0.11.2 |
+| buildx_version | The buildx version to use. | `false` | v0.31.1 |
 
 
 ## Runs
