@@ -15,11 +15,11 @@ runs:
       run: docker context create builders
 
     - name: setup docker buildx
-      uses: docker/setup-buildx-action@v3.0.0
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # pin @v4.0.0
       with:
         endpoint: builders
         version: ${{ inputs.buildx_version }}
         
-    - uses: imjasonh/setup-crane@00c9e93efa4e1138c9a7a5c594acd6c75a2fbf0c # pin@v0.3
+    - uses: imjasonh/setup-crane@6da1ae018866400525525ce74ff892880c099987 # pin@v0.5
       with:
         version: v0.15.2
