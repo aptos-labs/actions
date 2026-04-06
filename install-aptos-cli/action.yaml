@@ -1,31 +1,74 @@
 name: Install Aptos CLI
-description: Install the Aptos CLI. By default we use the latest released version of the Aptos CLI but you can specify the version. For now this only works on Linux runners.
+description: Install the Aptos CLI using the official install scripts from aptos.dev. Works on Linux, macOS, and Windows runners.
 
 inputs:
   INSTALL_DIRECTORY:
-    description: "The directory to install the Aptos CLI. If not specified, it will be installed in /usr/local/bin"
+    description: "The directory to install the Aptos CLI. If not specified, the script default is used (~/.local/bin on Linux/macOS, ~\\.aptoscli\\bin on Windows)."
     required: false
-    default: "/usr/local/bin"
   CLI_VERSION:
     description: "The version of the Aptos CLI to install. If not specified, the latest version will be installed."
     required: false
-  SHELL:
-    description: "The shell to use for the steps."
-    required: false
-    default: "bash"
 
 runs:
   using: composite
   steps:
-    - name: Fetch installation script
-      shell: ${{ inputs.SHELL }}
-      run: curl -fSL "https://aptos.dev/scripts/install_cli.py" -o ${{ runner.temp }}/install_cli.py
-
-    - name: Install Aptos CLI
-      shell: ${{ inputs.SHELL }}
+    - name: Install Aptos CLI (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
       run: |
+        ARGS="-f -y"
         if [ -n "${{ inputs.CLI_VERSION }}" ]; then
-          python3 ${{ runner.temp }}/install_cli.py -f -y --bin-dir ${{ inputs.INSTALL_DIRECTORY }} --cli-version ${{ inputs.CLI_VERSION }}
-        else
-          python3 ${{ runner.temp }}/install_cli.py -f -y --bin-dir ${{ inputs.INSTALL_DIRECTORY }}
+          ARGS="$ARGS --cli-version ${{ inputs.CLI_VERSION }}"
         fi
+        if [ -n "${{ inputs.INSTALL_DIRECTORY }}" ]; then
+          ARGS="$ARGS --bin-dir ${{ inputs.INSTALL_DIRECTORY }}"
+        fi
+        curl -fsSL "https://aptos.dev/scripts/install_cli.sh" | sh -s -- $ARGS
+
+    - name: Install Aptos CLI (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $scriptContent = Invoke-WebRequest -Uri "https://aptos.dev/scripts/install_cli.ps1" -UseBasicParsing | Select-Object -ExpandProperty Content
+        $argList = @("-f", "-y")
+        if ("${{ inputs.CLI_VERSION }}" -ne "") {
+          $argList += "--cli-version"
+          $argList += "${{ inputs.CLI_VERSION }}"
+        }
+        if ("${{ inputs.INSTALL_DIRECTORY }}" -ne "") {
+          $argList += "--bin-dir"
+          $argList += "${{ inputs.INSTALL_DIRECTORY }}"
+        }
+        $tempScript = Join-Path $env:RUNNER_TEMP "install_cli.ps1"
+        Set-Content -Path $tempScript -Value $scriptContent
+        & $tempScript @argList
+
+    - name: Add install directory to PATH (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.INSTALL_DIRECTORY }}" ]; then
+          echo "${{ inputs.INSTALL_DIRECTORY }}" >> "$GITHUB_PATH"
+        else
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        fi
+
+    - name: Add install directory to PATH (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        if ("${{ inputs.INSTALL_DIRECTORY }}" -ne "") {
+          "${{ inputs.INSTALL_DIRECTORY }}" | Out-File -Append -FilePath $env:GITHUB_PATH
+        } else {
+          "$env:USERPROFILE\.aptoscli\bin" | Out-File -Append -FilePath $env:GITHUB_PATH
+        }
+
+    - name: Verify installation
+      shell: bash
+      if: runner.os != 'Windows'
+      run: aptos --version
+
+    - name: Verify installation (Windows)
+      shell: pwsh
+      if: runner.os == 'Windows'
+      run: aptos --version
