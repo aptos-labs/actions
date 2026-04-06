@@ -6,4 +6,4 @@ runs:
   steps:
     - name: Install safechain
       shell: bash
-      run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/latest/download/install-safe-chain.sh | sh -s -- --ci
+      run: curl -fsSL https://github.com/AikidoSec/safe-chain/releases/1.4.7/download/install-safe-chain.sh | sh -s -- --ci
