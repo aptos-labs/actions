@@ -16,14 +16,14 @@ runs:
       if: runner.os != 'Windows'
       shell: bash
       run: |
-        ARGS="-f -y"
+        args=(-f -y)
         if [ -n "${{ inputs.CLI_VERSION }}" ]; then
-          ARGS="$ARGS --cli-version ${{ inputs.CLI_VERSION }}"
+          args+=(--cli-version "${{ inputs.CLI_VERSION }}")
         fi
         if [ -n "${{ inputs.INSTALL_DIRECTORY }}" ]; then
-          ARGS="$ARGS --bin-dir ${{ inputs.INSTALL_DIRECTORY }}"
+          args+=(--bin-dir "${{ inputs.INSTALL_DIRECTORY }}")
         fi
-        curl -fsSL "https://aptos.dev/scripts/install_cli.sh" | sh -s -- $ARGS
+        curl -fsSL "https://aptos.dev/scripts/install_cli.sh" | bash -s -- "${args[@]}"
 
     - name: Install Aptos CLI (Windows)
       if: runner.os == 'Windows'
@@ -58,9 +58,9 @@ runs:
       shell: pwsh
       run: |
         if ("${{ inputs.INSTALL_DIRECTORY }}" -ne "") {
-          "${{ inputs.INSTALL_DIRECTORY }}" | Out-File -Append -FilePath $env:GITHUB_PATH
+          Add-Content -Path $env:GITHUB_PATH -Value "${{ inputs.INSTALL_DIRECTORY }}"
         } else {
-          "$env:USERPROFILE\.aptoscli\bin" | Out-File -Append -FilePath $env:GITHUB_PATH
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.aptoscli\bin"
         }
 
     - name: Verify installation
