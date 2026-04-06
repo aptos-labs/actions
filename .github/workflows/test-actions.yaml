@@ -97,6 +97,57 @@ jobs:
       - run: |
           curl --fail http://127.0.0.1:8090/v1/graphql --data-raw '{"query":"{processor_status {last_success_version processor}}"}' || if [ $? -eq 7 ]; then exit 0; else exit 1; fi
 
+  # Test install-aptos-cli on Ubuntu.
+  run-install-aptos-cli-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./install-aptos-cli
+      - run: aptos --version
+
+  # Test install-aptos-cli on macOS.
+  run-install-aptos-cli-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./install-aptos-cli
+      - run: aptos --version
+
+  # Test install-aptos-cli with a custom install directory.
+  run-install-aptos-cli-custom-dir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./install-aptos-cli
+        with:
+          INSTALL_DIRECTORY: "/usr/local/bin"
+      - run: aptos --version
+      - run: which aptos | grep /usr/local/bin
+
+  # Test run-local-testnet-from-cli-release with default arguments (with indexer API).
+  run-local-testnet-from-cli-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./run-local-testnet-from-cli-release
+      - run: curl --fail http://127.0.0.1:8080/v1
+      - run: curl --fail http://127.0.0.1:8081
+      - run: |
+          curl --fail http://127.0.0.1:8090/v1/graphql --data-raw '{"query":"{processor_status {last_success_version processor}}"}'
+
+  # Test run-local-testnet-from-cli-release without the indexer API.
+  run-local-testnet-from-cli-release-no-indexer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./run-local-testnet-from-cli-release
+        with:
+          WITH_INDEXER_API: "false"
+      - run: curl --fail http://127.0.0.1:8080/v1
+      - run: curl --fail http://127.0.0.1:8081
+      - run: |
+          curl --fail http://127.0.0.1:8090/v1/graphql --data-raw '{"query":"{processor_status {last_success_version processor}}"}' || if [ $? -eq 7 ]; then exit 0; else exit 1; fi
+
   # This also transitively tests the install-aptos-cli action.
   run-test-move:
     runs-on: ubuntu-latest
