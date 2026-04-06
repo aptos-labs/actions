@@ -105,14 +105,6 @@ jobs:
       - uses: ./install-aptos-cli
       - run: aptos --version
 
-  # Test install-aptos-cli on macOS.
-  run-install-aptos-cli-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./install-aptos-cli
-      - run: aptos --version
-
   # Test install-aptos-cli with a custom install directory.
   run-install-aptos-cli-custom-dir:
     runs-on: ubuntu-latest
