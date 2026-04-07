@@ -1,0 +1,62 @@
+name: Run Local Testnet from CLI Release
+description: Install a released version of the Aptos CLI and start a local testnet. Once this action succeeds, a local testnet will be running and ready to use. Requires Docker if WITH_INDEXER_API is true. Linux and macOS only.
+
+inputs:
+  CLI_VERSION:
+    description: "The version of the Aptos CLI to install. If not specified, the latest version will be installed."
+    required: false
+  WITH_INDEXER_API:
+    description: "If true, run an indexer API in addition to the node API and faucet. Requires Docker."
+    default: "true"
+  ADDITIONAL_ARGS:
+    description: "Additional arguments to pass to the CLI when running the local testnet."
+    required: false
+  WAIT_TIMEOUT:
+    description: "Health check timeout in seconds."
+    default: "120"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up printing logs in a post step
+      uses: aptos-labs/actions/with-post-step@main
+      with:
+        main: echo "Configured post step to print localnet logs at the end..."
+        post: |
+          echo "Printing logs from the localnet..."
+          cat "${{ runner.temp }}/local-testnet-logs.txt" || echo "No log file found."
+          echo "Printed all logs from the localnet."
+
+    - name: Install Aptos CLI
+      uses: aptos-labs/actions/install-aptos-cli@main
+      with:
+        CLI_VERSION: ${{ inputs.CLI_VERSION }}
+
+    - name: Start local testnet
+      shell: bash
+      run: |
+        aptos node run-local-testnet \
+          --assume-yes \
+          --force-restart \
+          ${{ inputs.WITH_INDEXER_API == 'true' && '--with-indexer-api' || '' }} \
+          ${{ inputs.ADDITIONAL_ARGS || '' }} \
+          --log-to-stdout >& "${{ runner.temp }}/local-testnet-logs.txt" &
+
+    - name: Wait for local testnet to be ready
+      shell: bash
+      run: |
+        echo "Waiting for local testnet to be ready (timeout: ${{ inputs.WAIT_TIMEOUT }}s)..."
+        END_TIME=$(( $(date +%s) + ${{ inputs.WAIT_TIMEOUT }} ))
+        while true; do
+          if curl --fail --silent --output /dev/null http://127.0.0.1:8070; then
+            echo "Local testnet is ready!"
+            break
+          fi
+          if [ "$(date +%s)" -ge "$END_TIME" ]; then
+            echo "Timed out waiting for local testnet to be ready."
+            echo "Last 50 lines of logs:"
+            tail -50 "${{ runner.temp }}/local-testnet-logs.txt" || true
+            exit 1
+          fi
+          sleep 2
+        done
