@@ -5,17 +5,19 @@ on:
 
 permissions:
   contents: read
-  # Required for GCP Workload Identity federation which we use to login into Google Artifact Registry
-  id-token: write
 
 jobs:
   run-akidosec-safe-chain:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: aptos-labs/actions/akidosec-safe-chain@jkao97/akidosec-installation
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       - name: Validate safechain installation
         shell: bash
         run: |
@@ -32,14 +34,24 @@ jobs:
 
   run-docker-setup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./docker-setup
 
   run-gar-auth:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for GCP Workload Identity federation which we use to login into Google Artifact Registry
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./gar-auth
         with:
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -56,8 +68,12 @@ jobs:
   # released CLI. Confirm that the local testnet is actually up.
   run-local-testnet-released:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - uses: ./run-local-testnet
         with:
@@ -70,8 +86,12 @@ jobs:
   # Run a local testnet using a git ref.
   run-local-testnet-git-ref:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./run-local-testnet
         with:
           NODE_VERSION: 20
@@ -86,8 +106,12 @@ jobs:
   # not be there.
   run-local-testnet-no-indexer-api:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./run-local-testnet
         with:
           NODE_VERSION: 20
@@ -100,16 +124,24 @@ jobs:
   # Test install-aptos-cli on Ubuntu.
   run-install-aptos-cli-ubuntu:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./install-aptos-cli
       - run: aptos --version
 
   # Test install-aptos-cli with a custom install directory.
   run-install-aptos-cli-custom-dir:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./install-aptos-cli
         with:
           INSTALL_DIRECTORY: "/usr/local/bin"
@@ -119,8 +151,12 @@ jobs:
   # Test run-local-testnet-from-cli-release with default arguments (with indexer API).
   run-local-testnet-from-cli-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./run-local-testnet-from-cli-release
       - run: curl --fail http://127.0.0.1:8080/v1
       - run: curl --fail http://127.0.0.1:8081
@@ -130,8 +166,12 @@ jobs:
   # Test run-local-testnet-from-cli-release without the indexer API.
   run-local-testnet-from-cli-release-no-indexer:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./run-local-testnet-from-cli-release
         with:
           WITH_INDEXER_API: "false"
@@ -143,8 +183,12 @@ jobs:
   # This also transitively tests the install-aptos-cli action.
   run-test-move:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - uses: ./test-move
         with:
           WORKING_DIRECTORY: .github/workflows/move
