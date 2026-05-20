@@ -12,12 +12,30 @@ description: |
   each consuming package configures its own per-package trust relationship.
 
   How the dist-tag is computed:
-    v4.1.0          -> <stable-dist-tag>  (default: staged)
-    v4.1.0-beta.1   -> beta
-    v5.0.0-rc.2     -> rc
-    v4.1.0-next.3   -> next
-  Prereleases (tags with a `-suffix`) always derive their dist-tag from
-  the suffix; `stable-dist-tag` does not apply.
+    1.2.3           -> <stable-dist-tag>  (default: staged)
+    1.2.3-beta.1    -> beta
+    1.2.3-rc.2      -> rc
+    1.2.3-next.3    -> next
+  Prerelease detection looks at the extracted *version*, not the raw tag,
+  so monorepo-style tag prefixes don't false-positive on the `@` or `/`.
+  Prereleases derive their dist-tag from the suffix; `stable-dist-tag`
+  doesn't apply.
+
+  Monorepo / subpackage support:
+    Set `package-path` to the directory holding the package's package.json,
+    and `tag-pattern` to a regex whose first capture group is the version.
+    Example for an `aptos-ts-sdk` subpackage:
+
+      - uses: aptos-labs/actions/npm-publish@main
+        with:
+          package-path: packages/confidential-assets
+          tag-pattern: '^@aptos-labs/confidential-assets@([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)$'
+          build-command: pnpm --filter @aptos-labs/confidential-assets build
+          test-command:  pnpm --filter @aptos-labs/confidential-assets test
+
+    `package-path` only affects the package.json version check and the
+    final `npm publish` cwd. Build/test/install commands run from the repo
+    root so monorepo filters (pnpm/turbo/nx) keep working as you'd expect.
 
   Encodes two non-obvious requirements: do not pass `registry-url` to
   setup-node (it writes an .npmrc that overrides OIDC auth and fails the
@@ -26,6 +44,10 @@ description: |
   signs provenance).
 
 inputs:
+  package-path:
+    description: Directory containing the package's package.json. Use for monorepo subpackages. The package.json version check and `npm publish` run from here; build/test/install commands still run from the repo root.
+    required: false
+    default: "."
   stable-dist-tag:
     description: npm dist-tag for stable releases. Defaults to `staged` to block auto-publish to `latest`; set to `latest` only as an explicit override.
     required: false
@@ -63,14 +85,14 @@ inputs:
     required: false
     default: "true"
   tag-pattern:
-    description: Regex the release tag must match.
+    description: Regex the release tag must match. The first capture group MUST capture the version (no leading `v`). Default matches `vMAJOR.MINOR.PATCH[-prerelease]`. For monorepo packages, override with something like `^@scope/pkg@([0-9]+\.[0-9]+\.[0-9]+(-.+)?)$`.
     required: false
-    default: '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'
+    default: '^v([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)$'
 
 outputs:
   version:
-    description: The version that was published (no `v` prefix).
-    value: ${{ steps.derive.outputs.version }}
+    description: The version that was published (extracted from the tag, no `v` prefix).
+    value: ${{ steps.parse.outputs.version }}
   dist-tag:
     description: The npm dist-tag the version was published under.
     value: ${{ steps.derive.outputs.dist-tag }}
@@ -78,25 +100,52 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Validate release tag
+    # Validate the tag and extract the version in one pass. The tag-pattern
+    # input must have a capture group around the version (no leading `v`).
+    # BASH_REMATCH[1] is portable across Linux/macOS runners.
+    - name: Parse release tag
+      id: parse
       shell: bash
       env:
         TAG: ${{ github.ref_name }}
         PATTERN: ${{ inputs.tag-pattern }}
       run: |
-        if ! echo "$TAG" | grep -qE "$PATTERN"; then
+        if [[ ! "$TAG" =~ $PATTERN ]]; then
           echo "::error::Release tag '$TAG' does not match pattern '$PATTERN'"
           exit 1
         fi
+        VERSION="${BASH_REMATCH[1]:-}"
+        if [ -z "$VERSION" ]; then
+          echo "::error::tag-pattern matched but capture group 1 is empty. Make sure your pattern wraps the version in (...) — e.g. '^v([0-9]+\\.[0-9]+\\.[0-9]+(-.+)?)\$'"
+          exit 1
+        fi
+        # Prerelease detection looks at the *version* (group 1), so monorepo
+        # tag prefixes containing `@` or `/` don't false-positive.
+        if echo "$VERSION" | grep -qE '-'; then
+          IS_PRERELEASE=true
+          PRERELEASE_TAG=$(echo "$VERSION" | sed -E 's/^[0-9]+\.[0-9]+\.[0-9]+-([a-zA-Z]+).*/\1/')
+        else
+          IS_PRERELEASE=false
+          PRERELEASE_TAG=""
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "is-prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+        echo "prerelease-tag=$PRERELEASE_TAG" >> "$GITHUB_OUTPUT"
+        echo "Parsed tag '$TAG' -> version=$VERSION prerelease=$IS_PRERELEASE prerelease-tag='$PRERELEASE_TAG'"
 
     - name: Verify package.json version matches tag
       shell: bash
+      working-directory: ${{ inputs.package-path }}
       env:
-        TAG: ${{ github.ref_name }}
+        EXPECTED: ${{ steps.parse.outputs.version }}
       run: |
-        PKG_VERSION="v$(node --input-type=module -e "import { readFile } from 'node:fs/promises'; const p = JSON.parse(await readFile('./package.json', 'utf8')); process.stdout.write(p.version)")"
-        if [ "$PKG_VERSION" != "$TAG" ]; then
-          echo "::error::package.json version ($PKG_VERSION) does not match release tag ($TAG)"
+        if [ ! -f package.json ]; then
+          echo "::error::No package.json at '${{ inputs.package-path }}/package.json'"
+          exit 1
+        fi
+        PKG_VERSION=$(node --input-type=module -e "import { readFile } from 'node:fs/promises'; const p = JSON.parse(await readFile('./package.json', 'utf8')); process.stdout.write(p.version)")
+        if [ "$PKG_VERSION" != "$EXPECTED" ]; then
+          echo "::error::package.json version ($PKG_VERSION) at ${{ inputs.package-path }}/ does not match tag version ($EXPECTED)"
           exit 1
         fi
 
@@ -154,18 +203,16 @@ runs:
       id: derive
       shell: bash
       env:
-        TAG: ${{ github.ref_name }}
+        IS_PRERELEASE: ${{ steps.parse.outputs.is-prerelease }}
+        PRERELEASE_TAG: ${{ steps.parse.outputs.prerelease-tag }}
         STABLE_TAG: ${{ inputs.stable-dist-tag }}
       run: |
-        VERSION="${TAG#v}"
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-        if echo "$TAG" | grep -qE '-'; then
-          # Prerelease: derive dist-tag from the suffix (beta, rc, next, alpha, ...)
-          DIST_TAG=$(echo "$TAG" | sed -E 's/^v[0-9]+\.[0-9]+\.[0-9]+-([a-zA-Z]+).*/\1/')
+        if [ "$IS_PRERELEASE" = "true" ]; then
+          DIST_TAG="$PRERELEASE_TAG"
         else
           DIST_TAG="$STABLE_TAG"
         fi
-        echo "Publishing $TAG under npm dist-tag '$DIST_TAG'"
+        echo "Publishing version ${{ steps.parse.outputs.version }} under npm dist-tag '$DIST_TAG'"
         echo "dist-tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
 
     # Lightweight diagnostic — useful when OIDC publishes fail. `npm config
@@ -186,4 +233,5 @@ runs:
 
     - name: Publish to npm
       shell: bash
+      working-directory: ${{ inputs.package-path }}
       run: npm publish --provenance --access public --tag '${{ steps.derive.outputs.dist-tag }}'
