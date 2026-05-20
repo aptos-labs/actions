@@ -3,6 +3,17 @@ name: Publish npm package (reusable)
 # Reusable workflow for publishing scoped or unscoped npm packages with
 # OIDC trusted publishing — no NPM_TOKEN required.
 #
+# Policy:
+#   CI never auto-publishes a stable release to `latest`. Stable tags land
+#   on a non-`latest` dist-tag (default: `staged`) so the version is
+#   installable and pinnable but `npm install <pkg>` (no version) keeps
+#   resolving to whatever was previously latest. Promotion is a deliberate
+#   manual step after you've verified the staged release:
+#       npm dist-tag add <pkg>@<version> latest
+#   If a caller genuinely wants CI to publish straight to `latest` (rare,
+#   discouraged), they can set `stable-dist-tag: latest` as an explicit
+#   override — there is no innocuous boolean toggle.
+#
 # Caller setup:
 #   1. On npmjs.com, configure a Trusted Publisher for the package:
 #        Owner:    <your-github-org>
@@ -22,24 +33,15 @@ name: Publish npm package (reusable)
 #            permissions:
 #              contents: read
 #              id-token: write
-#            with:
-#              staged: true   # default — see below
-#
-# Why staged is the default:
-#   Cutting a release tag makes the version installable, but does NOT change
-#   what `npm install <pkg>` (no version) resolves to. With staged=true, the
-#   release lands on a non-`latest` dist-tag; you promote it later via
-#   `npm dist-tag add <pkg>@<version> latest` once you're satisfied. This
-#   prevents an accidental tag from rolling out to the whole ecosystem.
 #
 # How the dist-tag is computed:
-#   release tag         staged=true (default)   staged=false
-#   v4.1.0              <staged-dist-tag>       latest
-#   v4.1.0-beta.1       beta                    beta
-#   v5.0.0-rc.2         rc                      rc
-#   v4.1.0-next.3       next                    next
-#   Prereleases (tags with a `-suffix`) ignore `staged` because they're
-#   already non-latest by convention.
+#   release tag      → dist-tag
+#   v4.1.0           → <stable-dist-tag>  (default: staged)
+#   v4.1.0-beta.1    → beta
+#   v5.0.0-rc.2      → rc
+#   v4.1.0-next.3    → next
+#   Prereleases (tags with a `-suffix`) always derive the dist-tag from
+#   their suffix; the `stable-dist-tag` input does not apply.
 #
 # IMPORTANT gotchas this workflow encodes (learned the hard way):
 #   - Do NOT pass registry-url: to actions/setup-node. Doing so writes a
@@ -52,13 +54,8 @@ name: Publish npm package (reusable)
 on:
   workflow_call:
     inputs:
-      staged:
-        description: When true, stable releases publish under <staged-dist-tag> instead of `latest`. Caller promotes to latest manually.
-        type: boolean
-        required: false
-        default: true
-      staged-dist-tag:
-        description: The dist-tag used for stable releases when staged=true.
+      stable-dist-tag:
+        description: The npm dist-tag used for stable releases. Defaults to `staged` to block auto-publish to `latest`; set to `latest` only as an explicit override.
         type: string
         required: false
         default: staged
@@ -197,18 +194,15 @@ jobs:
         id: derive
         env:
           TAG: ${{ github.ref_name }}
-          STAGED: ${{ inputs.staged }}
-          STAGED_TAG: ${{ inputs.staged-dist-tag }}
+          STABLE_TAG: ${{ inputs.stable-dist-tag }}
         run: |
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if echo "$TAG" | grep -qE '-'; then
             # Prerelease: derive dist-tag from the suffix (beta, rc, next, alpha, ...)
             DIST_TAG=$(echo "$TAG" | sed -E 's/^v[0-9]+\.[0-9]+\.[0-9]+-([a-zA-Z]+).*/\1/')
-          elif [ "$STAGED" = "true" ]; then
-            DIST_TAG="$STAGED_TAG"
           else
-            DIST_TAG=latest
+            DIST_TAG="$STABLE_TAG"
           fi
           echo "Publishing $TAG under npm dist-tag '$DIST_TAG'"
           echo "dist-tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
