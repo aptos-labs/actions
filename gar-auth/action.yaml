@@ -35,3 +35,4 @@ runs:
       shell: bash
       run: |
         echo "access_token=${{ steps.auth.outputs.access_token }}" >> $GITHUB_OUTPUT
+        echo "credentials_file_path=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_OUTPUT
