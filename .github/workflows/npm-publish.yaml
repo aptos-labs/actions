@@ -1,0 +1,232 @@
+name: Publish npm package (reusable)
+
+# Reusable workflow for publishing scoped or unscoped npm packages with
+# OIDC trusted publishing — no NPM_TOKEN required.
+#
+# Caller setup:
+#   1. On npmjs.com, configure a Trusted Publisher for the package:
+#        Owner:    <your-github-org>
+#        Repo:     <your-repo>
+#        Workflow: <name-of-your-caller-workflow-file>.yaml (just the filename)
+#        Environment: blank — unless you set environment: on the calling job
+#
+#   2. Add a caller workflow in your repo, e.g. .github/workflows/publish.yaml:
+#
+#        name: Publish to npm
+#        on:
+#          release:
+#            types: [published]
+#        jobs:
+#          publish:
+#            uses: aptos-labs/actions/.github/workflows/npm-publish.yaml@main
+#            permissions:
+#              contents: read
+#              id-token: write
+#            with:
+#              staged: true   # default — see below
+#
+# Why staged is the default:
+#   Cutting a release tag makes the version installable, but does NOT change
+#   what `npm install <pkg>` (no version) resolves to. With staged=true, the
+#   release lands on a non-`latest` dist-tag; you promote it later via
+#   `npm dist-tag add <pkg>@<version> latest` once you're satisfied. This
+#   prevents an accidental tag from rolling out to the whole ecosystem.
+#
+# How the dist-tag is computed:
+#   release tag         staged=true (default)   staged=false
+#   v4.1.0              <staged-dist-tag>       latest
+#   v4.1.0-beta.1       beta                    beta
+#   v5.0.0-rc.2         rc                      rc
+#   v4.1.0-next.3       next                    next
+#   Prereleases (tags with a `-suffix`) ignore `staged` because they're
+#   already non-latest by convention.
+#
+# IMPORTANT gotchas this workflow encodes (learned the hard way):
+#   - Do NOT pass registry-url: to actions/setup-node. Doing so writes a
+#     project .npmrc with `_authToken=${NODE_AUTH_TOKEN}` + always-auth=true,
+#     which npm prefers over OIDC — failing the publish with a misleading 404.
+#   - Node 24 LTS ships with npm 11.x, which is required for OIDC *publish*
+#     authentication. npm 10 can sign provenance attestations but cannot
+#     authenticate the registry PUT via OIDC.
+
+on:
+  workflow_call:
+    inputs:
+      staged:
+        description: When true, stable releases publish under <staged-dist-tag> instead of `latest`. Caller promotes to latest manually.
+        type: boolean
+        required: false
+        default: true
+      staged-dist-tag:
+        description: The dist-tag used for stable releases when staged=true.
+        type: string
+        required: false
+        default: staged
+      node-version:
+        description: Node.js version. Must be 24+ for npm 11+ which supports OIDC publish auth.
+        type: string
+        required: false
+        default: "24"
+      install-command:
+        description: Command to install dependencies.
+        type: string
+        required: false
+        default: pnpm install --frozen-lockfile
+      build-command:
+        description: Command to build the package.
+        type: string
+        required: false
+        default: pnpm build
+      test-command:
+        description: Command to run tests. Empty string skips.
+        type: string
+        required: false
+        default: pnpm test
+      lint-command:
+        description: Lint/check command. Empty string skips.
+        type: string
+        required: false
+        default: ""
+      typecheck-command:
+        description: Typecheck command. Empty string skips.
+        type: string
+        required: false
+        default: ""
+      required-declaration-files:
+        description: Newline-separated list of .d.ts files that must exist after build. Empty skips check.
+        type: string
+        required: false
+        default: ""
+      safe-chain:
+        description: Install Aikido Safe Chain (malware proxy) before publishing.
+        type: boolean
+        required: false
+        default: true
+      tag-pattern:
+        description: Regex the release tag must match.
+        type: string
+        required: false
+        default: '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'
+    outputs:
+      version:
+        description: The version that was published (no `v` prefix).
+        value: ${{ jobs.publish.outputs.version }}
+      dist-tag:
+        description: The npm dist-tag the version was published under.
+        value: ${{ jobs.publish.outputs.dist-tag }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      version: ${{ steps.derive.outputs.version }}
+      dist-tag: ${{ steps.derive.outputs.dist-tag }}
+    steps:
+      - name: Validate release tag
+        env:
+          TAG: ${{ github.ref_name }}
+          PATTERN: ${{ inputs.tag-pattern }}
+        run: |
+          if ! echo "$TAG" | grep -qE "$PATTERN"; then
+            echo "::error::Release tag '$TAG' does not match pattern '$PATTERN'"
+            exit 1
+          fi
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Verify package.json version matches tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          PKG_VERSION="v$(node --input-type=module -e "import { readFile } from 'node:fs/promises'; const p = JSON.parse(await readFile('./package.json', 'utf8')); process.stdout.write(p.version)")"
+          if [ "$PKG_VERSION" != "$TAG" ]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match release tag ($TAG)"
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      # No registry-url: passing it makes setup-node write a project .npmrc
+      # with `_authToken=${NODE_AUTH_TOKEN}` and `always-auth=true`, which
+      # npm prefers over OIDC trusted publishing. See header comment.
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - if: inputs.safe-chain
+        uses: aptos-labs/actions/aikidosec-safe-chain@main
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - if: inputs.lint-command != ''
+        name: Lint
+        run: ${{ inputs.lint-command }}
+
+      - if: inputs.typecheck-command != ''
+        name: Typecheck
+        run: ${{ inputs.typecheck-command }}
+
+      - name: Build
+        run: ${{ inputs.build-command }}
+
+      - if: inputs.required-declaration-files != ''
+        name: Verify required declaration files exist
+        env:
+          FILES: ${{ inputs.required-declaration-files }}
+        run: |
+          echo "$FILES" | while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if [ ! -f "$f" ]; then
+              echo "::error::Required file '$f' is missing after build"
+              exit 1
+            fi
+          done
+
+      - if: inputs.test-command != ''
+        name: Test
+        run: ${{ inputs.test-command }}
+
+      - name: Derive npm dist-tag
+        id: derive
+        env:
+          TAG: ${{ github.ref_name }}
+          STAGED: ${{ inputs.staged }}
+          STAGED_TAG: ${{ inputs.staged-dist-tag }}
+        run: |
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if echo "$TAG" | grep -qE '-'; then
+            # Prerelease: derive dist-tag from the suffix (beta, rc, next, alpha, ...)
+            DIST_TAG=$(echo "$TAG" | sed -E 's/^v[0-9]+\.[0-9]+\.[0-9]+-([a-zA-Z]+).*/\1/')
+          elif [ "$STAGED" = "true" ]; then
+            DIST_TAG="$STAGED_TAG"
+          else
+            DIST_TAG=latest
+          fi
+          echo "Publishing $TAG under npm dist-tag '$DIST_TAG'"
+          echo "dist-tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+
+      # Lightweight diagnostic — useful when OIDC publishes fail. Prints no
+      # secrets (`npm config list` redacts them) and runs in well under 1s.
+      - name: Diagnostic — npm version and effective config
+        run: |
+          echo "node: $(node --version)"
+          echo "npm:  $(npm --version)"
+          echo "--- npm config list ---"
+          npm config list || true
+          echo "--- userconfig file (if any) ---"
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
+            cat "$NPM_CONFIG_USERCONFIG"
+          else
+            echo "(no userconfig file in use)"
+          fi
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public --tag '${{ steps.derive.outputs.dist-tag }}'
