@@ -30,3 +30,8 @@ runs:
         registry: us-docker.pkg.dev # use multi-region GAR
         username: oauth2accesstoken
         password: ${{ steps.auth.outputs.access_token }}
+
+    - name: Set output
+      shell: bash
+      run: |
+        echo "access_token=${{ steps.auth.outputs.access_token }}" >> $GITHUB_OUTPUT
