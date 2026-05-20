@@ -55,6 +55,7 @@ signs provenance).
 | package-path | Directory containing the package's package.json. The single cwd for the version check, all commands (install/lint/typecheck/build/test), and `npm publish`. Defaults to repo root. | `false` | . |
 | stable-dist-tag | npm dist-tag for stable releases. Defaults to `staged` to block auto-publish to `latest`; set to `latest` only as an explicit override. | `false` | staged |
 | node-version | Node.js version. Must be 24+ for npm 11+ which supports OIDC publish auth. | `false` | 24 |
+| pnpm-version | Pin pnpm to a specific version for reproducibility. Empty (default) lets pnpm/action-setup read the `packageManager` field from package.json — which is what most repos here do. | `false` |  |
 | install-command | Command to install dependencies. | `false` | pnpm install --frozen-lockfile |
 | build-command | Command to build the package. | `false` | pnpm build |
 | test-command | Command to run tests. Empty string skips. | `false` | pnpm test |

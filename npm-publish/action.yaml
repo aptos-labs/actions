@@ -60,6 +60,10 @@ inputs:
     description: Node.js version. Must be 24+ for npm 11+ which supports OIDC publish auth.
     required: false
     default: "24"
+  pnpm-version:
+    description: Pin pnpm to a specific version for reproducibility. Empty (default) lets pnpm/action-setup read the `packageManager` field from package.json — which is what most repos here do.
+    required: false
+    default: ""
   install-command:
     description: Command to install dependencies.
     required: false
@@ -125,9 +129,20 @@ runs:
         fi
         # Prerelease detection looks at the *version* (group 1), so monorepo
         # tag prefixes containing `@` or `/` don't false-positive.
+        #
+        # Dist-tag from prerelease: take the first dash-prefixed identifier
+        # that starts with a letter (e.g., `1.2.3-rc.1` -> `rc`). For purely
+        # numeric prereleases like `1.2.3-1` — valid semver but uncommon —
+        # there's no meaningful alpha identifier, so fall back to `prerelease`
+        # and warn the caller.
         if echo "$VERSION" | grep -qE '-'; then
           IS_PRERELEASE=true
-          PRERELEASE_TAG=$(echo "$VERSION" | sed -E 's/^[0-9]+\.[0-9]+\.[0-9]+-([a-zA-Z]+).*/\1/')
+          if [[ "$VERSION" =~ -([a-zA-Z][a-zA-Z0-9]*) ]]; then
+            PRERELEASE_TAG="${BASH_REMATCH[1]}"
+          else
+            PRERELEASE_TAG="prerelease"
+            echo "::warning::Prerelease version '$VERSION' has no alpha identifier; using '$PRERELEASE_TAG' as dist-tag"
+          fi
         else
           IS_PRERELEASE=false
           PRERELEASE_TAG=""
@@ -137,6 +152,9 @@ runs:
         echo "prerelease-tag=$PRERELEASE_TAG" >> "$GITHUB_OUTPUT"
         echo "Parsed tag '$TAG' -> version=$VERSION prerelease=$IS_PRERELEASE prerelease-tag='$PRERELEASE_TAG'"
 
+    # Uses `jq` (preinstalled on GitHub-hosted runners) rather than `node`
+    # so this step does not depend on the runner's default Node version —
+    # it runs before `actions/setup-node` installs the requested version.
     - name: Verify package.json version matches tag
       shell: bash
       working-directory: ${{ inputs.package-path }}
@@ -147,13 +165,18 @@ runs:
           echo "::error::No package.json at '${{ inputs.package-path }}/package.json'"
           exit 1
         fi
-        PKG_VERSION=$(node --input-type=module -e "import { readFile } from 'node:fs/promises'; const p = JSON.parse(await readFile('./package.json', 'utf8')); process.stdout.write(p.version)")
+        PKG_VERSION=$(jq -r .version package.json)
         if [ "$PKG_VERSION" != "$EXPECTED" ]; then
           echo "::error::package.json version ($PKG_VERSION) at ${{ inputs.package-path }}/ does not match tag version ($EXPECTED)"
           exit 1
         fi
 
+    # When `pnpm-version` is empty, pnpm/action-setup falls back to the
+    # `packageManager` field in package.json. Both behaviors are reproducible
+    # as long as the consuming repo pins one or the other.
     - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      with:
+        version: ${{ inputs.pnpm-version }}
 
     # No registry-url: passing it makes setup-node write a project .npmrc
     # with `_authToken=${NODE_AUTH_TOKEN}` and `always-auth=true`, which
@@ -231,7 +254,12 @@ runs:
         echo "dist-tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
 
     # Lightweight diagnostic — useful when OIDC publishes fail. `npm config
-    # list` redacts secrets, so this is safe to print.
+    # list` redacts secrets by default. For the userconfig file we redact
+    # values of common secret-bearing keys (`_authToken`, `_password`,
+    # `password`, `token`, `auth`) before printing, in case a non-empty
+    # token ever ends up there. GitHub's log masking only covers registered
+    # repo/org secrets, not arbitrary file contents, so this is defense in
+    # depth on top of the no-NPM_TOKEN OIDC flow.
     - name: Diagnostic — npm version and effective config
       shell: bash
       run: |
@@ -241,7 +269,9 @@ runs:
         npm config list || true
         echo "--- userconfig file (if any) ---"
         if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
-          cat "$NPM_CONFIG_USERCONFIG"
+          echo "userconfig path: $NPM_CONFIG_USERCONFIG"
+          echo "userconfig (sensitive values redacted):"
+          sed -E 's/(_authToken|_password|password|token|auth)([[:space:]]*=[[:space:]]*).+/\1\2<redacted>/' "$NPM_CONFIG_USERCONFIG"
         else
           echo "(no userconfig file in use)"
         fi
