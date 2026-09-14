@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  run-akidosec-safe-chain:
+  run-aikidosec-safe-chain:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -15,10 +15,13 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: aptos-labs/actions/akidosec-safe-chain@jkao97/akidosec-installation
       - name: Install Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-      - name: Validate safechain installation
+      - uses: ./aikidosec-safe-chain
+      - name: Verify safe-chain is active
+        shell: bash
+        run: npm safe-chain-verify
+      - name: Validate malware blocking
         shell: bash
         run: |
             set +e
