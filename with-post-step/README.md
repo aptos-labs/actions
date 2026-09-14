@@ -18,6 +18,6 @@ Originally forked from https://github.com/pyTooling/Actions/tree/main/with-post-
 
 ## Runs
 
-This action is a `node20` action.
+This action is a `node24` action.
 
 

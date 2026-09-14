@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: github-actions
+    directory: /docker-setup
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /gar-auth
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /run-local-testnet
+    schedule:
+      interval: weekly

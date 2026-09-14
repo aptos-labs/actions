@@ -14,6 +14,6 @@ Delete obsolete runs of workflows that do not exist anymore in the given repo.
 
 ## Runs
 
-This action is a `node20` action.
+This action is a `node24` action.
 
 
