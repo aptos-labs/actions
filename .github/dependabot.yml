@@ -20,3 +20,11 @@ updates:
     directory: /run-local-testnet
     schedule:
       interval: weekly
+  - package-ecosystem: github-actions
+    directory: /npm-publish
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /prune-github-workflow-runs
+    schedule:
+      interval: weekly
