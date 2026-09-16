@@ -1,0 +1,282 @@
+name: Publish npm package via OIDC
+description: |
+  Publishes an npm package using OIDC trusted publishing — no NPM_TOKEN
+  required. By default CI never auto-publishes to `latest`; stable releases
+  land on the `staged` dist-tag and you promote them manually with
+  `npm dist-tag add <pkg>@<version> latest`.
+
+  Requires `actions/checkout` to have run earlier in the same job, and the
+  calling job must declare `permissions: { id-token: write }` so OIDC tokens
+  can be minted. The package's trusted publisher on npmjs.com should point
+  at the caller's repository and workflow filename (NOT this action), so
+  each consuming package configures its own per-package trust relationship.
+
+  How the dist-tag is computed:
+    1.2.3           -> <stable-dist-tag>  (default: staged)
+    1.2.3-beta.1    -> beta
+    1.2.3-rc.2      -> rc
+    1.2.3-next.3    -> next
+  Prerelease detection looks at the extracted *version*, not the raw tag,
+  so monorepo-style tag prefixes don't false-positive on the `@` or `/`.
+  Prereleases derive their dist-tag from the suffix; `stable-dist-tag`
+  doesn't apply.
+
+  Monorepo / subpackage support:
+    Set `package-path` to the directory holding the package's package.json
+    and `tag-pattern` to a regex whose first capture group is the version.
+    `package-path` is the single cwd for the package.json check, all
+    commands (install/build/test/lint/typecheck), and `npm publish` — no
+    `--filter` flags or `cd` prefixes needed in command overrides.
+
+    This works equally well for two repo shapes:
+      - workspace monorepos (a single root pnpm-lock.yaml; pnpm walks up
+        to find pnpm-workspace.yaml when commands run from a member dir)
+      - nested-independent packages (the subdir has its own pnpm-lock.yaml
+        and node_modules — e.g., aptos-ts-sdk/confidential-asset)
+
+    Example for the aptos-ts-sdk confidential-asset package:
+
+      - uses: aptos-labs/actions/npm-publish@main
+        with:
+          package-path: confidential-asset
+          tag-pattern: '^@aptos-labs/confidential-asset@([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)$'
+
+  Encodes two non-obvious requirements: do not pass `registry-url` to
+  setup-node (it writes an .npmrc that overrides OIDC auth and fails the
+  publish with a misleading 404), and pin Node 24+ so npm 11.5.1+ is
+  available (only npm 11+ authenticates publishes via OIDC; npm 10 only
+  signs provenance).
+
+inputs:
+  package-path:
+    description: Directory containing the package's package.json. The single cwd for the version check, all commands (install/lint/typecheck/build/test), and `npm publish`. Defaults to repo root.
+    required: false
+    default: "."
+  stable-dist-tag:
+    description: npm dist-tag for stable releases. Defaults to `staged` to block auto-publish to `latest`; set to `latest` only as an explicit override.
+    required: false
+    default: staged
+  node-version:
+    description: Node.js version. Must be 24+ for npm 11+ which supports OIDC publish auth.
+    required: false
+    default: "24"
+  pnpm-version:
+    description: Pin pnpm to a specific version for reproducibility. Empty (default) lets pnpm/action-setup read the `packageManager` field from package.json — which is what most repos here do.
+    required: false
+    default: ""
+  install-command:
+    description: Command to install dependencies.
+    required: false
+    default: pnpm install --frozen-lockfile
+  build-command:
+    description: Command to build the package.
+    required: false
+    default: pnpm build
+  test-command:
+    description: Command to run tests. Empty string skips.
+    required: false
+    default: pnpm test
+  lint-command:
+    description: Lint/check command. Empty string skips.
+    required: false
+    default: ""
+  typecheck-command:
+    description: Typecheck command. Empty string skips.
+    required: false
+    default: ""
+  required-declaration-files:
+    description: Newline-separated list of .d.ts files (relative to package-path) that must exist after build. Empty skips check.
+    required: false
+    default: ""
+  safe-chain:
+    description: Install Aikido Safe Chain (malware proxy) before publishing. String `true`/`false`.
+    required: false
+    default: "true"
+  tag-pattern:
+    description: Regex the release tag must match. The first capture group MUST capture the version (no leading `v`). Default matches `vMAJOR.MINOR.PATCH[-prerelease]`. For monorepo packages, override with something like `^@scope/pkg@([0-9]+\.[0-9]+\.[0-9]+(-.+)?)$`.
+    required: false
+    default: '^v([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)$'
+
+outputs:
+  version:
+    description: The version that was published (extracted from the tag, no `v` prefix).
+    value: ${{ steps.parse.outputs.version }}
+  dist-tag:
+    description: The npm dist-tag the version was published under.
+    value: ${{ steps.derive.outputs.dist-tag }}
+
+runs:
+  using: composite
+  steps:
+    # Validate the tag and extract the version in one pass. The tag-pattern
+    # input must have a capture group around the version (no leading `v`).
+    # BASH_REMATCH[1] is portable across Linux/macOS runners.
+    - name: Parse release tag
+      id: parse
+      shell: bash
+      env:
+        TAG: ${{ github.ref_name }}
+        PATTERN: ${{ inputs.tag-pattern }}
+      run: |
+        if [[ ! "$TAG" =~ $PATTERN ]]; then
+          echo "::error::Release tag '$TAG' does not match pattern '$PATTERN'"
+          exit 1
+        fi
+        VERSION="${BASH_REMATCH[1]:-}"
+        if [ -z "$VERSION" ]; then
+          echo "::error::tag-pattern matched but capture group 1 is empty. Make sure your pattern wraps the version in (...) — e.g. '^v([0-9]+\\.[0-9]+\\.[0-9]+(-.+)?)\$'"
+          exit 1
+        fi
+        # Prerelease detection looks at the *version* (group 1), so monorepo
+        # tag prefixes containing `@` or `/` don't false-positive.
+        #
+        # Dist-tag from prerelease: take the first dash-prefixed identifier
+        # that starts with a letter (e.g., `1.2.3-rc.1` -> `rc`). For purely
+        # numeric prereleases like `1.2.3-1` — valid semver but uncommon —
+        # there's no meaningful alpha identifier, so fall back to `prerelease`
+        # and warn the caller.
+        if echo "$VERSION" | grep -qE '-'; then
+          IS_PRERELEASE=true
+          if [[ "$VERSION" =~ -([a-zA-Z][a-zA-Z0-9]*) ]]; then
+            PRERELEASE_TAG="${BASH_REMATCH[1]}"
+          else
+            PRERELEASE_TAG="prerelease"
+            echo "::warning::Prerelease version '$VERSION' has no alpha identifier; using '$PRERELEASE_TAG' as dist-tag"
+          fi
+        else
+          IS_PRERELEASE=false
+          PRERELEASE_TAG=""
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "is-prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+        echo "prerelease-tag=$PRERELEASE_TAG" >> "$GITHUB_OUTPUT"
+        echo "Parsed tag '$TAG' -> version=$VERSION prerelease=$IS_PRERELEASE prerelease-tag='$PRERELEASE_TAG'"
+
+    # Uses `jq` (preinstalled on GitHub-hosted runners) rather than `node`
+    # so this step does not depend on the runner's default Node version —
+    # it runs before `actions/setup-node` installs the requested version.
+    - name: Verify package.json version matches tag
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      env:
+        EXPECTED: ${{ steps.parse.outputs.version }}
+      run: |
+        if [ ! -f package.json ]; then
+          echo "::error::No package.json at '${{ inputs.package-path }}/package.json'"
+          exit 1
+        fi
+        PKG_VERSION=$(jq -r .version package.json)
+        if [ "$PKG_VERSION" != "$EXPECTED" ]; then
+          echo "::error::package.json version ($PKG_VERSION) at ${{ inputs.package-path }}/ does not match tag version ($EXPECTED)"
+          exit 1
+        fi
+
+    # When `pnpm-version` is empty, pnpm/action-setup falls back to the
+    # `packageManager` field in package.json. Both behaviors are reproducible
+    # as long as the consuming repo pins one or the other.
+    - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+      with:
+        version: ${{ inputs.pnpm-version }}
+
+    # No registry-url: passing it makes setup-node write a project .npmrc
+    # with `_authToken=${NODE_AUTH_TOKEN}` and `always-auth=true`, which
+    # npm prefers over OIDC trusted publishing.
+    #
+    # `cache-dependency-path` uses a glob so the cache key works for all
+    # three repo shapes: single-package (root lockfile), workspace
+    # monorepo (root lockfile), and nested-independent (subdir lockfile).
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+        cache-dependency-path: "**/pnpm-lock.yaml"
+
+    - if: inputs.safe-chain == 'true'
+      uses: aptos-labs/actions/aikidosec-safe-chain@main
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.install-command }}
+
+    - if: inputs.lint-command != ''
+      name: Lint
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.lint-command }}
+
+    - if: inputs.typecheck-command != ''
+      name: Typecheck
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.typecheck-command }}
+
+    - name: Build
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.build-command }}
+
+    - if: inputs.required-declaration-files != ''
+      name: Verify required declaration files exist
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      env:
+        FILES: ${{ inputs.required-declaration-files }}
+      run: |
+        echo "$FILES" | while IFS= read -r f; do
+          [ -z "$f" ] && continue
+          if [ ! -f "$f" ]; then
+            echo "::error::Required file '$f' is missing after build (in ${{ inputs.package-path }}/)"
+            exit 1
+          fi
+        done
+
+    - if: inputs.test-command != ''
+      name: Test
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.test-command }}
+
+    - name: Derive npm dist-tag
+      id: derive
+      shell: bash
+      env:
+        IS_PRERELEASE: ${{ steps.parse.outputs.is-prerelease }}
+        PRERELEASE_TAG: ${{ steps.parse.outputs.prerelease-tag }}
+        STABLE_TAG: ${{ inputs.stable-dist-tag }}
+      run: |
+        if [ "$IS_PRERELEASE" = "true" ]; then
+          DIST_TAG="$PRERELEASE_TAG"
+        else
+          DIST_TAG="$STABLE_TAG"
+        fi
+        echo "Publishing version ${{ steps.parse.outputs.version }} under npm dist-tag '$DIST_TAG'"
+        echo "dist-tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+
+    # Lightweight diagnostic — useful when OIDC publishes fail. `npm config
+    # list` redacts secrets by default. For the userconfig file we redact
+    # values of common secret-bearing keys (`_authToken`, `_password`,
+    # `password`, `token`, `auth`) before printing, in case a non-empty
+    # token ever ends up there. GitHub's log masking only covers registered
+    # repo/org secrets, not arbitrary file contents, so this is defense in
+    # depth on top of the no-NPM_TOKEN OIDC flow.
+    - name: Diagnostic — npm version and effective config
+      shell: bash
+      run: |
+        echo "node: $(node --version)"
+        echo "npm:  $(npm --version)"
+        echo "--- npm config list ---"
+        npm config list || true
+        echo "--- userconfig file (if any) ---"
+        if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
+          echo "userconfig path: $NPM_CONFIG_USERCONFIG"
+          echo "userconfig (sensitive values redacted):"
+          sed -E 's/(_authToken|_password|password|token|auth)([[:space:]]*=[[:space:]]*).+/\1\2<redacted>/' "$NPM_CONFIG_USERCONFIG"
+        else
+          echo "(no userconfig file in use)"
+        fi
+
+    - name: Publish to npm
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: npm publish --provenance --access public --tag '${{ steps.derive.outputs.dist-tag }}'
