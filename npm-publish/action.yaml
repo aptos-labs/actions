@@ -25,7 +25,7 @@ description: |
     Set `package-path` to the directory holding the package's package.json
     and `tag-pattern` to a regex whose first capture group is the version.
     `package-path` is the single cwd for the package.json check, all
-    commands (install/build/test/lint/typecheck), and `npm publish` — no
+    commands (install/audit/build/test/lint/typecheck), and `npm publish` — no
     `--filter` flags or `cd` prefixes needed in command overrides.
 
     This works equally well for two repo shapes:
@@ -49,7 +49,7 @@ description: |
 
 inputs:
   package-path:
-    description: Directory containing the package's package.json. The single cwd for the version check, all commands (install/lint/typecheck/build/test), and `npm publish`. Defaults to repo root.
+    description: Directory containing the package's package.json. The single cwd for the version check, all commands (install/audit/lint/typecheck/build/test), and `npm publish`. Defaults to repo root.
     required: false
     default: "."
   stable-dist-tag:
@@ -68,6 +68,10 @@ inputs:
     description: Command to install dependencies.
     required: false
     default: pnpm install --frozen-lockfile
+  audit-command:
+    description: Command to audit installed dependencies after install. Empty string skips. Defaults to `pnpm audit` so publishes fail on known advisories; set to empty to skip.
+    required: false
+    default: pnpm audit
   build-command:
     description: Command to build the package.
     required: false
@@ -198,6 +202,12 @@ runs:
       shell: bash
       working-directory: ${{ inputs.package-path }}
       run: ${{ inputs.install-command }}
+
+    - if: inputs.audit-command != ''
+      name: Audit dependencies
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.audit-command }}
 
     - if: inputs.lint-command != ''
       name: Lint

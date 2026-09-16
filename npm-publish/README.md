@@ -25,7 +25,7 @@ Monorepo / subpackage support:
   Set `package-path` to the directory holding the package's package.json
   and `tag-pattern` to a regex whose first capture group is the version.
   `package-path` is the single cwd for the package.json check, all
-  commands (install/build/test/lint/typecheck), and `npm publish` — no
+  commands (install/audit/build/test/lint/typecheck), and `npm publish` — no
   `--filter` flags or `cd` prefixes needed in command overrides.
 
   This works equally well for two repo shapes:
@@ -52,11 +52,12 @@ signs provenance).
 
 | parameter | description | required | default |
 | --- | --- | --- | --- |
-| package-path | Directory containing the package's package.json. The single cwd for the version check, all commands (install/lint/typecheck/build/test), and `npm publish`. Defaults to repo root. | `false` | . |
+| package-path | Directory containing the package's package.json. The single cwd for the version check, all commands (install/audit/lint/typecheck/build/test), and `npm publish`. Defaults to repo root. | `false` | . |
 | stable-dist-tag | npm dist-tag for stable releases. Defaults to `staged` to block auto-publish to `latest`; set to `latest` only as an explicit override. | `false` | staged |
 | node-version | Node.js version. Must be 24+ for npm 11+ which supports OIDC publish auth. | `false` | 24 |
 | pnpm-version | Pin pnpm to a specific version for reproducibility. Empty (default) lets pnpm/action-setup read the `packageManager` field from package.json — which is what most repos here do. | `false` |  |
 | install-command | Command to install dependencies. | `false` | pnpm install --frozen-lockfile |
+| audit-command | Command to audit installed dependencies after install. Empty string skips. Defaults to `pnpm audit` so publishes fail on known advisories; set to empty to skip. | `false` | pnpm audit |
 | build-command | Command to build the package. | `false` | pnpm build |
 | test-command | Command to run tests. Empty string skips. | `false` | pnpm test |
 | lint-command | Lint/check command. Empty string skips. | `false` |  |

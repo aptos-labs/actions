@@ -7,6 +7,36 @@ permissions:
   contents: read
 
 jobs:
+  # Keep the only JS action's lockfile free of pnpm/npm audit findings.
+  audit-prune-github-workflow-runs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: prune-github-workflow-runs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        with:
+          version: 9.15.9
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: prune-github-workflow-runs/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Audit dependencies
+        run: pnpm audit
+      - name: Rebuild bundled action and confirm dist is committed
+        run: |
+          pnpm package
+          git diff --exit-code dist
+
   run-aikidosec-safe-chain:
     runs-on: ubuntu-latest
     permissions:
