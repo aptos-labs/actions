@@ -24,6 +24,10 @@ updates:
     directory: /npm-publish
     schedule:
       interval: weekly
+  - package-ecosystem: github-actions
+    directory: /pypi-publish
+    schedule:
+      interval: weekly
   - package-ecosystem: npm
     directory: /prune-github-workflow-runs
     schedule:
