@@ -7,18 +7,23 @@ permissions:
   contents: read
 
 jobs:
-  run-akidosec-safe-chain:
+  run-aikidosec-safe-chain:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: aptos-labs/actions/akidosec-safe-chain@jkao97/akidosec-installation
       - name: Install Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-      - name: Validate safechain installation
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: ./aikidosec-safe-chain
+      - name: Verify safe-chain is active
+        shell: bash
+        run: npm safe-chain-verify
+      - name: Validate malware blocking
         shell: bash
         run: |
             set +e
@@ -37,19 +42,22 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./docker-setup
 
+  # Workload Identity attribute conditions only accept refs/heads/main, so this
+  # job cannot succeed on feature branches.
   run-gar-auth:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       # Required for GCP Workload Identity federation which we use to login into Google Artifact Registry
       id-token: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./gar-auth
@@ -64,6 +72,19 @@ jobs:
           GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
           create_credentials_file: false
 
+  run-with-post-step:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./with-post-step
+        with:
+          main: echo "with-post-step main ran"
+          post: echo "with-post-step post ran"
+
   # Run a local testnet with the default arguments, which means it uses the latest
   # released CLI. Confirm that the local testnet is actually up.
   run-local-testnet-released:
@@ -71,13 +92,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - uses: ./run-local-testnet
         with:
-          NODE_VERSION: 20
+          NODE_VERSION: 24
       - run: curl --fail http://127.0.0.1:8080/v1
       - run: curl --fail http://127.0.0.1:8081
       - run: |
@@ -89,12 +110,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./run-local-testnet
         with:
-          NODE_VERSION: 20
+          NODE_VERSION: 24
           CLI_GIT_REF: "nightly_36181e92c65020660a98d2041aadaafdc682cf8a"
       - run: curl --fail http://127.0.0.1:8080/v1
       - run: curl --fail http://127.0.0.1:8081
@@ -109,12 +130,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./run-local-testnet
         with:
-          NODE_VERSION: 20
+          NODE_VERSION: 24
           WITH_INDEXER_API: "false"
       - run: curl --fail http://127.0.0.1:8080/v1
       - run: curl --fail http://127.0.0.1:8081
@@ -127,7 +148,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./install-aptos-cli
@@ -139,7 +160,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./install-aptos-cli
@@ -154,7 +175,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./run-local-testnet-from-cli-release
@@ -169,7 +190,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./run-local-testnet-from-cli-release
@@ -186,7 +207,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./test-move
