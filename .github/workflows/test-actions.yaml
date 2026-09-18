@@ -37,6 +37,28 @@ jobs:
           pnpm package
           git diff --exit-code dist
 
+  # Keep the Python publish fixture lockfile free of uv audit findings, and
+  # confirm the default `uv audit --locked` gate fails on a known-vulnerable pin.
+  audit-pypi-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: 0.12.15
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: pypi-publish/testdata/clean/uv.lock
+      - name: Run pypi-publish audit and version-check tests
+        run: bash pypi-publish/testdata/run-tests.sh
+
   run-aikidosec-safe-chain:
     runs-on: ubuntu-latest
     permissions:

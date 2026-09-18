@@ -1,0 +1,206 @@
+name: Publish Python package via OIDC
+description: |
+  Publishes a Python package to PyPI using OIDC trusted publishing — no
+  PYPI_API_TOKEN required. After install, the action runs `uv audit --locked`
+  so a release cannot ship with known lockfile advisories. Set
+  `audit-command` to empty to skip.
+
+  Requires `actions/checkout` to have run earlier in the same job, and the
+  calling job must declare `permissions: { id-token: write }` so OIDC tokens
+  can be minted. The project's trusted publisher on PyPI should point at the
+  caller's repository and workflow filename (NOT this action), so each
+  consuming package configures its own per-package trust relationship.
+
+  Why composite, not a reusable workflow: with a reusable workflow, GitHub's
+  OIDC token reports `job_workflow_ref` as the *called* workflow's file in
+  this repo. PyPI's trusted publisher would then need to match
+  `aptos-labs/actions` + that workflow, and every consuming package would
+  share the same trust subject. With a composite action, `job_workflow_ref`
+  stays as the *caller's* workflow.
+
+  PyPI has no npm-style dist-tag. Protection against accidental production
+  uploads belongs on the caller's GitHub Environment (the python-sdk uses
+  `environment: pypi`). Point `repository-url` at TestPyPI when you want a
+  non-production index.
+
+  Monorepo / subpackage support:
+    Set `package-path` to the directory holding the package's pyproject.toml
+    and `tag-pattern` to a regex whose first capture group is the version.
+    `package-path` is the single cwd for the version check, all commands
+    (install/audit/build/test/lint), and the built `dist/` that is uploaded.
+
+    Example for a nested package:
+
+      - uses: aptos-labs/actions/pypi-publish@main
+        with:
+          package-path: packages/foo
+          tag-pattern: '^foo-v([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)$'
+
+  Requires a static PEP 621 `[project].version` (dynamic versions are
+  rejected) and a committed `uv.lock` for the default install/audit
+  commands. `uv audit` needs uv 0.12+ (`uv-version`, or
+  `tool.uv.required-version` in pyproject.toml).
+
+  Known-advisory call-out: `aptos-labs/aptos-python-sdk` currently fails a
+  default `uv audit --locked` on transitive `ecdsa` CVE-2024-23342 (no fix
+  version). Adopters with unfixed findings must ignore specific IDs, clean
+  the tree, or set `audit-command: ""` until the advisory is gone.
+
+inputs:
+  package-path:
+    description: Directory containing the package's pyproject.toml. The single cwd for the version check, all commands (install/audit/lint/build/test), and the built dist/ uploaded to PyPI. Defaults to repo root.
+    required: false
+    default: "."
+  python-version:
+    description: Python version to install. Must satisfy the package's requires-python.
+    required: false
+    default: "3.12"
+  uv-version:
+    description: Pin uv to a specific version for reproducibility. Empty (default) lets astral-sh/setup-uv use tool.uv.required-version from pyproject.toml, then the latest uv. uv 0.12+ is required for the default `uv audit` command.
+    required: false
+    default: ""
+  install-command:
+    description: Command to install dependencies from the committed lockfile.
+    required: false
+    default: uv sync --locked
+  audit-command:
+    description: Command to audit the locked dependency graph after install. Empty string skips. Defaults to `uv audit --locked` so publishes fail on known advisories; set to empty to skip.
+    required: false
+    default: uv audit --locked
+  build-command:
+    description: Command to build sdist/wheel into dist/.
+    required: false
+    default: uv build
+  test-command:
+    description: Command to run tests. Empty string skips. Default is empty because Python test runners vary (unittest, pytest, behave).
+    required: false
+    default: ""
+  lint-command:
+    description: Lint/check command. Empty string skips.
+    required: false
+    default: ""
+  safe-chain:
+    description: Install Aikido Safe Chain (malware proxy) before installing dependencies. String `true`/`false`.
+    required: false
+    default: "true"
+  tag-pattern:
+    description: Regex the release tag must match. The first capture group MUST capture the version (no leading `v`). Default matches `vMAJOR.MINOR.PATCH[-prerelease]`.
+    required: false
+    default: '^v([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)$'
+  repository-url:
+    description: PEP 503 upload endpoint. Default is production PyPI. Set to `https://test.pypi.org/legacy/` for TestPyPI.
+    required: false
+    default: https://upload.pypi.org/legacy/
+  skip-existing:
+    description: Do not fail if this version's distributions already exist on the index. String `true`/`false`.
+    required: false
+    default: "false"
+
+outputs:
+  version:
+    description: The version that was published (extracted from the tag, no `v` prefix).
+    value: ${{ steps.parse.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # Validate the tag and extract the version in one pass. The tag-pattern
+    # input must have a capture group around the version (no leading `v`).
+    # BASH_REMATCH[1] is portable across Linux/macOS runners.
+    - name: Parse release tag
+      id: parse
+      shell: bash
+      env:
+        TAG: ${{ github.ref_name }}
+        PATTERN: ${{ inputs.tag-pattern }}
+      run: |
+        if [[ ! "$TAG" =~ $PATTERN ]]; then
+          echo "::error::Release tag '$TAG' does not match pattern '$PATTERN'"
+          exit 1
+        fi
+        VERSION="${BASH_REMATCH[1]:-}"
+        if [ -z "$VERSION" ]; then
+          echo "::error::tag-pattern matched but capture group 1 is empty. Make sure your pattern wraps the version in (...) — e.g. '^v([0-9]+\\.[0-9]+\\.[0-9]+(-.+)?)\$'"
+          exit 1
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Parsed tag '$TAG' -> version=$VERSION"
+
+    # Uses the runner's preinstalled python3 + tomllib (3.11+) rather than
+    # the python we install later, so the check does not depend on
+    # actions/setup-python having run.
+    - name: Verify pyproject.toml version matches tag
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      env:
+        EXPECTED: ${{ steps.parse.outputs.version }}
+        PACKAGE_PATH: ${{ inputs.package-path }}
+      run: bash "${GITHUB_ACTION_PATH}/scripts/verify-pyproject-version.sh"
+
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # When `uv-version` is empty, setup-uv falls back to
+    # tool.uv.required-version in pyproject.toml, then latest. Both are
+    # reproducible as long as the consuming repo pins one or the other.
+    #
+    # cache-dependency-glob uses a glob so the cache key works for root
+    # lockfiles and nested-independent packages (subdir uv.lock).
+    - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      with:
+        version: ${{ inputs.uv-version }}
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+        cache-dependency-glob: "**/uv.lock"
+
+    - if: inputs.safe-chain == 'true'
+      uses: aptos-labs/actions/aikidosec-safe-chain@main
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.install-command }}
+
+    - if: inputs.audit-command != ''
+      name: Audit dependencies
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.audit-command }}
+
+    - if: inputs.lint-command != ''
+      name: Lint
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.lint-command }}
+
+    - name: Build
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.build-command }}
+
+    - if: inputs.test-command != ''
+      name: Test
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: ${{ inputs.test-command }}
+
+    - name: Diagnostic — python and uv versions
+      shell: bash
+      working-directory: ${{ inputs.package-path }}
+      run: |
+        echo "python: $(python3 --version 2>&1)"
+        echo "uv:     $(uv --version 2>&1)"
+        echo "--- pyproject.toml version ---"
+        python3 -c "import pathlib, tomllib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])"
+        echo "--- dist/ ---"
+        ls -la dist || echo "(no dist/ yet)"
+
+    - name: Publish to PyPI via trusted publishing
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      with:
+        packages-dir: ${{ inputs.package-path }}/dist
+        repository-url: ${{ inputs.repository-url }}
+        skip-existing: ${{ inputs.skip-existing }}
+        verbose: "true"
+        attestations: "true"

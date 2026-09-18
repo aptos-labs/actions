@@ -1,0 +1,9 @@
+[project]
+name = "aptos-actions-python-audit-fixture"
+version = "0.0.0"
+description = "CI fixture for uv audit in aptos-labs/actions. Not published."
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
